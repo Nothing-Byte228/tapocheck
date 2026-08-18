@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>TapoCheck Glass</title>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-csharp.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-pascal.min.js"></script>
+
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+        body, html { height: 100%; width: 100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; overflow: hidden; }
+        
+        body {
+            background: linear-gradient(-45deg, #1f2a38, #2c3e50, #1a252f, #243342);
+            background-size: 400% 400%;
+            animation: gradientBG 20s ease infinite;
+        }
+
+        @keyframes gradientBG {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        .chat-container { display: flex; flex-direction: column; height: 100%; width: 100%; background: transparent; }
+        
+        .chat-header { 
+            padding: 10px 20px;
+            background: rgba(255, 255, 255, 0.1); 
+            backdrop-filter: blur(40px); -webkit-backdrop-filter: blur(40px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex; justify-content: space-between;
+            align-items: center; height: 56px; z-index: 10; flex-shrink: 0;
+        }
+        .chat-header-title { font-weight: bold; font-size: 16px; color: #fff; }
+        .chat-header-status { font-size: 12px; color: #24a1de; font-weight: 500; }
+        .chat-header a { color: #ff5c5c; text-decoration: none; font-size: 14px; padding: 6px 14px;
+            border-radius: 20px; background: rgba(255, 255, 255, 0.1); font-weight: 500; border: 1px solid rgba(255, 255, 255, 0.05); }
+
+        .messages { flex: 1 1 auto; min-height: 0; padding: 16px; overflow-y: auto; display: flex; flex-direction: column;
+            gap: 10px; -webkit-overflow-scrolling: touch; }
+        
+        .msg { 
+            padding: 10px 14px;
+            border-radius: 16px; max-width: 85%; width: fit-content; position: relative; 
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15); display: flex; flex-direction: column; cursor: pointer;
+            border: 1px solid rgba(255, 255, 255, 0.08); transition: transform 0.1s;
+        }
+        .msg:active { transform: scale(0.99); }
+        .msg.other { background: rgba(255, 255, 255, 0.08); backdrop-filter: blur(40px); -webkit-backdrop-filter: blur(40px);
+            align-self: flex-start; border-bottom-left-radius: 4px; color: #fff; }
+        .msg.my { background: rgba(36, 161, 222, 0.15);
+            backdrop-filter: blur(40px); -webkit-backdrop-filter: blur(40px); align-self: flex-end; border-bottom-right-radius: 4px; color: #fff; border-color: rgba(36, 161, 222, 0.2);
+        }
+        
+        .msg-user { font-weight: 600; font-size: 12px; margin-bottom: 4px; }
+        .msg.other .msg-user { color: #24a1de; }
+        .msg.my .msg-user { color: #5bc0de; }
+
+        .msg-text { font-size: 15px; line-height: 1.4; padding-right: 45px; word-break: break-word; -webkit-user-select: text; user-select: text; }
+        .msg-text p { margin-bottom: 6px; }
+        .msg-text p:last-child { margin-bottom: 0; }
+        .msg-text code { background: rgba(0,0,0,0.3); padding: 2px 5px; border-radius: 4px; font-family: monospace; font-size: 13px; color: #e67e22; }
+        .msg-text pre { background: #1e1e1e !important; padding: 10px; border-radius: 8px; overflow-x: auto; margin: 6px 0; border: 1px solid rgba(255,255,255,0.05); }
+        .msg-text pre code { background: transparent; padding: 0; color: #fff; }
+        .msg-meta { font-size: 10px; color: rgba(255, 255, 255, 0.4); position: absolute; right: 10px; bottom: 4px; }
+
+        .msg-reply-quote { border-left: 3px solid #24a1de; padding-left: 8px; margin-bottom: 6px; font-size: 13px; background: rgba(255,255,255,0.05); border-radius: 4px; color: #ccc; }
+        .reply-user { font-weight: bold; color: #24a1de; font-size: 11px; margin-bottom: 2px; }
+
+        .chat-img, .chat-video-preview { max-width: 100%; max-height: 220px; border-radius: 12px; margin: 4px 0; display: block; object-fit: cover; }
+        .video-wrapper { position: relative; }
+        .video-play-badge { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.5); color: white; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+        .chat-file { display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.05); padding: 10px 14px; border-radius: 10px; text-decoration: none; color: #24a1de; font-size: 14px; margin: 4px 0; }
+
+        .code-block-container { background: #1a1a1a; border-radius: 10px; border: 1px solid rgba(255,255,255,0.1); margin-top: 6px; overflow: hidden; width: 100%; max-width: 500px; cursor: default; }
+        .code-block-header { background: #262626; padding: 8px 12px; display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #aaa; border-bottom: 1px solid rgba(255,255,255,0.05); }
+        .code-block-actions { display: flex; gap: 10px; align-items: center; }
+        .code-icon-btn { cursor: pointer; color: #24a1de; display: flex; align-items: center; justify-content: center; }
+        .code-icon-btn:hover { color: #fff; }
+        .code-icon-btn i { width: 16px; height: 16px; }
+        
+        .code-block-body { max-height: 120px; overflow: hidden; transition: max-height 0.25s ease-out; position: relative; }
+        .code-block-body.expanded { max-height: 800px; overflow-x: auto; }
+        .code-block-body pre { margin: 0 !important; background: transparent !important; padding: 10px !important; }
+        
+        .code-toggle-btn { background: #262626; text-align: center; padding: 6px; font-size: 12px; color: #24a1de; cursor: pointer; font-weight: bold; border-top: 1px solid rgba(255,255,255,0.05); }
+        .code-toggle-btn:hover { background: #333; }
+
+        .action-preview { display: none; padding: 10px 20px; background: rgba(20, 30, 40, 0.6); backdrop-filter: blur(40px); -webkit-backdrop-filter: blur(40px); border-top: 1px solid rgba(255,255,255,0.1); align-items: center; justify-content: space-between; font-size: 14px; color: #fff; flex-shrink: 0; }
+        .action-preview-text { border-left: 3px solid #24a1de; padding-left: 8px; display: flex; align-items: center; gap: 6px; }
+        .action-preview-close { color: #ff5c5c; cursor: pointer; }
+
+        .chat-form-container { 
+            padding: 8px 16px;
+            background: rgba(20, 30, 40, 0.6); 
+            backdrop-filter: blur(40px); -webkit-backdrop-filter: blur(40px);
+            border-top: 1px solid rgba(255, 255, 255, 0.1); 
+            display: flex; 
+            align-items: flex-end;
+            gap: 12px; 
+            min-height: 56px;
+            height: auto;
+            flex-shrink: 0;
+        }
+
+        .chat-input { 
+            flex: 1;
+            padding: 10px 16px; 
+            border: 1px solid rgba(255,255,255,0.1); 
+            border-radius: 18px; 
+            outline: none; 
+            font-size: 16px; 
+            background: rgba(255, 255, 255, 0.08); 
+            color: #fff;
+            font-family: inherit;
+            resize: none; 
+            height: 40px; 
+            max-height: 140px; 
+            line-height: 20px;
+            overflow-y: auto;
+            -webkit-user-select: text; user-select: text;
+        }
+        .chat-input:focus { background: rgba(255,255,255,0.15); border-color: rgba(36,161,222,0.4); }
+        
+        .btn { border: none; background: transparent; color: #aaa; cursor: pointer; display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 50%; }
+        .btn:hover { background: rgba(255,255,255,0.08); color: #fff; }
+        .btn i { width: 22px; height: 22px; }
+        .btn-send { color: #24a1de; }
+        #file-input { display: none; }
+
+        .context-menu { display: none; position: fixed; background: rgba(30, 40, 50, 0.9);
+            backdrop-filter: blur(40px); -webkit-backdrop-filter: blur(40px); border: 1px solid rgba(255, 255, 255, 0.1); box-shadow: 0 8px 30px rgba(0,0,0,0.3); border-radius: 14px; z-index: 100;
+            min-width: 200px; overflow: hidden; transform: scale(0.3); opacity: 0; transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.1s ease;
+        }
+        .context-menu.show { display: block; transform: scale(1); opacity: 1; }
+        .context-menu-item { padding: 10px 16px; font-size: 14px; cursor: pointer; color: #fff; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid rgba(255,255,255,0.03); }
+        .context-menu-item:last-child { border-bottom: none; }
+        .context-menu-item i { width: 16px; height: 16px; color: #24a1de; }
+        .context-menu-item:hover { background: rgba(255,255,255,0.08); }
+        .context-menu-item.delete { color: #ff5c5c; }
+        .context-menu-item.delete i { color: #ff5c5c; }
+
+        .media-viewer { display: none; position: fixed; top: 0; left: 0; width: 100%;
+            height: 100%; background: rgba(10, 15, 25, 0.85); backdrop-filter: blur(40px); -webkit-backdrop-filter: blur(40px); z-index: 200; justify-content: center; align-items: center; padding: 20px; }
+        .media-viewer-content { max-width: 95%; max-height: 80vh; border-radius: 8px; box-shadow: 0 10px 40px rgba(0,0,0,0.5); }
+        .code-viewer-container { width: 100%; max-width: 800px; height: 80vh; background: #1e1e1e; border-radius: 14px; border: 1px solid rgba(255,255,255,0.1); display: flex; flex-direction: column; overflow: hidden; }
+        .code-viewer-body { flex: 1; overflow: auto; padding: 16px; }
+        .code-viewer-body pre { margin: 0 !important; background: transparent !important; }
+        .media-viewer-close { position: absolute; top: 20px; right: 20px; color: white; cursor: pointer; padding: 10px; }
+        .media-viewer-close i { width: 28px; height: 28px; }
+
+        @media (min-width: 768px) {
+            body { display: flex; justify-content: center; align-items: center; }
+            .chat-container { max-width: 720px; height: 92vh; border-radius: 20px; box-shadow: 0 12px 40px rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); overflow: hidden; }
+        }
+    </style>
+
+    <style>
+        .typing-indicator-box { display: none; padding: 6px 20px; font-size: 13px; color: rgba(255,255,255,0.6); align-items: center; gap: 6px; flex-shrink: 0; }
+        .typing-dots { display: flex; gap: 3px; }
+        .typing-dot { width: 4px; height: 4px; background: #24a1de; border-radius: 50%; animation: typingBounce 1.4s infinite ease-in-out both; }
+        @keyframes typingBounce { 0%, 80%, 100% { transform: scale(0); } 40% { transform: scale(1.0); } }
+
+        .nav-tabs { display: flex; background: rgba(0,0,0,0.2); border-bottom: 1px solid rgba(255,255,255,0.05); flex-shrink: 0; }
+        .nav-tab { flex: 1; text-align: center; padding: 12px; color: #aaa; font-size: 13px; cursor: pointer; font-weight: 500; }
+        .nav-tab.active { color: #24a1de; border-bottom: 2px solid #24a1de; background: rgba(255,255,255,0.02); }
+
+        .glass-panel-content { padding: 20px; color: #fff; overflow-y: auto; height: 100%; }
+        .list-item { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 12px; background: rgba(255,255,255,0.04); margin-bottom: 8px; cursor: pointer; border: 1px solid rgba(255,255,255,0.02); }
+        .list-item:hover { background: rgba(255,255,255,0.08); }
+        .item-avatar { width: 36px; height: 36px; border-radius: 50%; background: #24a1de; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 14px; color: #fff; object-fit: cover; }
+        
+        .p-input { width: 100%; padding: 10px 14px; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; color: #fff; margin-top: 6px; margin-bottom: 14px; outline: none; }
+        .p-btn { background: #24a1de; color: white; border: none; padding: 10px 20px; border-radius: 10px; cursor: pointer; font-weight: bold; }
+        
+        .msg-avatar { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; position: absolute; left: -36px; top: 4px; }
+        .msg.other { margin-left: 36px; }
+    </style>
+</head>
+<body>
+
+<div class="chat-container">
+    <div class="chat-header">
+        <div>
+            <span class="chat-header-title" id="chat-title-text">TapoCheck</span><br>
+            <span class="chat-header-status"><span id="my-username-span">{{ username }}</span></span>
+        </div>
+        <a href="{{ url_for('logout') }}">Выйти</a>
+    </div>
+
+    <div class="nav-tabs">
+        <div class="nav-tab active" id="tab-group" onclick="switchView('group', 'general')"><i data-lucide="message-square"></i> Чаты</div>
+        <div class="nav-tab" id="tab-dm" onclick="switchView('dm_list')"><i data-lucide="users"></i> ЛС</div>
+        <div class="nav-tab" id="tab-profile" onclick="switchView('profile')"><i data-lucide="user"></i> Профиль</div>
+        <div class="nav-tab" id="tab-admin" style="display:none;" onclick="switchView('admin')"><i data-lucide="shield"></i> Админка</div>
+    </div>
+    
+    <div class="messages" id="chat-box" onclick="closeMenu()"></div>
+    
+    <div class="typing-indicator-box" id="typing-indicator">
+        <span id="typing-status-text">Печатает</span>
+        <div class="typing-dots"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div>
+    </div>
+    
+    <div class="action-preview" id="action-bar">
+        <div class="action-preview-text" id="action-bar-text"></div>
+        <div class="action-preview-close" onclick="cancelAction()"><i data-lucide="x"></i></div>
+    </div>
+
+    <div class="chat-form-container" id="chat-form-panel">
+        <button type="button" class="btn" onclick="document.getElementById('file-input').click()"><i data-lucide="paperclip"></i></button>
+        <input type="file" id="file-input" onchange="uploadFile()">
+        <textarea id="message-text" class="chat-input" placeholder="Напишите сообщение..." rows="1" oninput="autoResizeTextArea(this); sendTypingSignal()"></textarea>
+        <button type="button" class="btn btn-send" onclick="submitForm()"><i data-lucide="send-horizontal"></i></button>
+    </div>
+</div>
+
+<div class="context-menu" id="msg-menu">
+    <div class="context-menu-item" onclick="triggerReply()"><i data-lucide="reply"></i>Ответить</div>
+    <div class="context-menu-item" id="menu-copy-btn" onclick="triggerCopyText()"><i data-lucide="copy"></i>Копировать текст</div>
+    <div class="context-menu-item" id="menu-copy-img-btn" onclick="triggerCopyImage()"><i data-lucide="image"></i>Копировать изображение</div>
+    <div class="context-menu-item" id="menu-download-img-btn" onclick="triggerDownloadImage()"><i data-lucide="download"></i>Скачать картинку</div>
+    <div class="context-menu-item" onclick="triggerCopyLink()"><i data-lucide="link"></i>Копировать ссылку</div>
+    <div class="context-menu-item id-my-only" id="menu-edit-btn" onclick="triggerEdit()"><i data-lucide="pencil"></i>Изменить</div>
+    <div class="context-menu-item delete id-my-only" onclick="triggerDelete()"><i data-lucide="trash-2"></i>Удалить</div>
+</div>
+
+<div class="media-viewer" id="media-viewer" onclick="closeViewer()">
+    <span class="media-viewer-close" onclick="closeViewer()"><i data-lucide="x"></i></span>
+    <div id="viewer-container" style="width:100%; display:flex; justify-content:center;" onclick="event.stopPropagation()"></div>
+</div>
+
+<script>
+    const currentUsername = document.getElementById('my-username-span').innerText.trim();
+    let currentView = 'group'; // group, dm_list, dm, profile, admin
+    let currentTarget = 'general';
+    
+    let isInitialLoad = true;
+    let selectedMsgId = null;
+    let selectedMsgUser = null;
+    let selectedMsgText = null;
+    let selectedMsgType = null;
+    let selectedMsgUrl = null; 
+    let currentAction = null; 
+    let touchTimeout;
+    let codeFilesCache = {};
+    let lastTypingTime = 0;
+
+    function autoResizeTextArea(element) {
+        element.style.height = "40px"; 
+        const newHeight = element.scrollHeight;
+        if (newHeight > 40) element.style.height = Math.min(newHeight, 140) + "px"; 
+    }
+
+    function escapeHtml(text) {
+        if(!text) return '';
+        return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+    }
+
+    function switchView(view, target = '') {
+        currentView = view;
+        currentTarget = target;
+        isInitialLoad = true;
+        
+        document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+        document.getElementById('chat-form-panel').style.display = (view === 'group' || view === 'dm') ? 'flex' : 'none';
+        document.getElementById('typing-indicator').style.display = 'none';
+
+        if (view === 'group') {
+            document.getElementById('tab-group').classList.add('active');
+            document.getElementById('chat-title-text').innerText = `Комната: #${target}`;
+        } else if (view === 'dm_list' || view === 'dm') {
+            document.getElementById('tab-dm').classList.add('active');
+            document.getElementById('chat-title-text').innerText = view === 'dm' ? `ЛС: @${target}` : "Личные сообщения";
+        } else if (view === 'profile') {
+            document.getElementById('tab-profile').classList.add('active');
+            document.getElementById('chat-title-text').innerText = "Мой профиль";
+        } else if (view === 'admin') {
+            document.getElementById('tab-admin').classList.add('active');
+            document.getElementById('chat-title-text').innerText = "Управление системой";
+        }
+        renderMainView();
+    }
+
+    function renderMainView() {
+        const chatBox = document.getElementById('chat-box');
+        
+        if (currentView === 'group' && currentTarget === 'general') {
+            // Отрендерим базовое меню выбора чат-комнат прямо поверх истории
+            let roomsHtml = `
+                <div class="glass-panel-content">
+                    <h3>Выберите чат-комнату:</h3><br>
+                    <div class="list-item" onclick="switchView('group', 'general')"><i data-lucide="hash"></i> #general (Общий чат)</div>
+                    <div class="list-item" onclick="switchView('group', 'python')"><i data-lucide="hash"></i> #python (Разработка)</div>
+                    <div class="list-item" onclick="switchView('group', 'bugs')"><i data-lucide="hash"></i> #bugs (Баг-трекер)</div>
+                </div><hr style="opacity:0.1; margin: 15px 0;">`;
+            loadMessagesFromServer(roomsHtml);
+        } else if (currentView === 'group' || currentView === 'dm') {
+            loadMessagesFromServer('');
+        } else if (currentView === 'dm_list') {
+            fetch("/get_active_users").then(res => res.json()).then(users => {
+                let html = '<div class="glass-panel-content"><h3>Ваши диалоги:</h3><br>';
+                users.forEach(u => {
+                    let av = u.avatar ? `<img src="${u.avatar}" class="item-avatar">` : `<div class="item-avatar">${u.displayname[0].toUpperCase()}</div>`;
+                    html += `
+                        <div class="list-item" onclick="switchView('dm', '${u.username}')">
+                            ${av}
+                            <div>
+                                <b>${escapeHtml(u.displayname)}</b> (@${escapeHtml(u.username)})<br>
+                                <span style="font-size:12px; opacity:0.6;">${escapeHtml(u.status || 'Нет статуса')}</span>
+                            </div>
+                        </div>`;
+                });
+                chatBox.innerHTML = html + '</div>';
+                lucide.createIcons();
+            });
+        } else if (currentView === 'profile') {
+            fetch("/get_profile").then(res => res.json()).then(p => {
+                chatBox.innerHTML = `
+                    <div class="glass-panel-content" onclick="event.stopPropagation()">
+                        <h3>Редактирование профиля TapoCheck</h3><br>
+                        <form id="profile-form" onsubmit="saveProfile(event)" enctype="multipart/form-data">
+                            <label>Никнейм (Смена невозможна):</label>
+                            <input type="text" class="p-input" value="${escapeHtml(p.username)}" disabled>
+                            <label>Отображаемое имя:</label>
+                            <input type="text" name="displayname" class="p-input" value="${escapeHtml(p.displayname || '')}">
+                            <label>Статус:</label>
+                            <input type="text" name="status" class="p-input" value="${escapeHtml(p.status || '')}">
+                            <label>Новый пароль (оставьте пустым, если не меняете):</label>
+                            <input type="password" name="password" class="p-input">
+                            <label>Аватарка:</label><br><br>
+                            <input type="file" name="avatar" accept="image/*"><br><br>
+                            <button type="submit" class="p-btn">Сохранить изменения</button>
+                        </form>
+                    </div>`;
+            });
+        } else if (currentView === 'admin') {
+            fetch("/admin/users").then(res => res.json()).then(users => {
+                let html = '<div class="glass-panel-content"><h3>Управление пользователями:</h3><br>';
+                users.forEach(u => {
+                    let actionBtn = u.is_banned ? 
+                        `<button class="p-btn" style="background:#2ecc71;" onclick="toggleBan(${u.id})">Разбанить</button>` : 
+                        `<button class="p-btn" style="background:#ff5c5c;" onclick="toggleBan(${u.id})">Забанить</button>`;
+                    if(u.username === currentUsername) actionBtn = '<i>Вы</i>';
+                    html += `
+                        <div class="list-item" style="justify-content: space-between; cursor:default;">
+                            <div><b>${escapeHtml(u.displayname)}</b> (@${escapeHtml(u.username)}) ${u.is_admin ? '[Админ]' : ''}</div>
+                            <div>${actionBtn}</div>
+                        </div>`;
+                });
+                chatBox.innerHTML = html + '</div>';
+            });
+        }
+    }
+
+    function saveProfile(e) {
+        e.preventDefault();
+        fetch("/update_profile", { method: 'POST', body: new FormData(document.getElementById('profile-form')) })
+            .then(() => alert('Профиль сохранен!'));
+    }
+
+    function toggleBan(id) {
+        fetch(`/admin/toggle_ban/${id}`, { method: 'POST' }).then(() => renderMainView());
+    }
+
+    function loadMessagesFromServer(prefixHtml) {
+        if (currentView !== 'group' && currentView !== 'dm') return;
+        
+        fetch(`/get_messages?type=${currentView}&target=${currentTarget}`)
+            .then(res => res.json())
+            .then(messages => {
+                const chatBox = document.getElementById('chat-box');
+                const isScrolledToBottom = chatBox.scrollHeight - chatBox.clientHeight <= chatBox.scrollTop + 120;
+                
+                let html = prefixHtml;
+                messages.forEach(msg => {
+                    const isMy = msg.username === currentUsername ? 'my' : 'other';
+                    let content = '';
+                    let secureText = escapeHtml(msg.text);
+
+                    if (msg.reply_to) {
+                        content += `
+                            <div class="msg-reply-quote" onclick="scrollToMessage(${msg.reply_to.id})">
+                                <div class="reply-user">${escapeHtml(msg.reply_to.displayname)}</div>
+                                <div class="reply-text">${escapeHtml(msg.reply_to.text)}</div>
+                            </div>`;
+                    }
+
+                    if (msg.type === 'text') {
+                        content += `<div class="msg-text">${marked.parse(secureText)}</div>`;
+                    } else if (msg.type === 'image') {
+                        // Багфикс отображения картинок: явный сброс параметров и обработка ошибок на путях
+                        content += `<img src="${msg.url}" class="chat-img" onerror="this.src='/static/error-img.png'" onclick="openViewer('${msg.url}', 'image')">`;
+                    } else if (msg.type === 'video') {
+                        content += `
+                            <div class="video-wrapper" onclick="openViewer('${msg.url}', 'video')">
+                                <video src="${msg.url}" class="chat-video-preview" muted></video>
+                                <div class="video-play-badge"><i data-lucide="play"></i></div>
+                            </div>`;
+                    } else if (msg.type === 'file') {
+                        content += `<a href="${msg.url}" download class="chat-file" onclick="event.stopPropagation()"><i data-lucide="file"></i> ${secureText}</a>`;
+                    } else if (msg.type === 'code') {
+                        codeFilesCache[msg.id] = msg.raw_content;
+                        const fileExt = msg.text.split('.').pop();
+                        content += `
+                            <div class="code-block-container" onclick="event.stopPropagation()">
+                                <div class="code-block-header">
+                                    <span>📁 ${secureText}</span>
+                                    <div class="code-block-actions">
+                                        <div class="code-icon-btn" title="Копировать код" onclick="copyRawCode(${msg.id})"><i data-lucide="copy"></i></div>
+                                        <div class="code-icon-btn" onclick="openCodeViewer(${msg.id}, '${fileExt}')"><i data-lucide="maximize-2"></i></div>
+                                        <a href="${msg.url}" download class="code-icon-btn"><i data-lucide="download"></i></a>
+                                    </div>
+                                </div>
+                                <div class="code-block-body" id="code-body-${msg.id}">
+                                    <pre><code class="language-${fileExt}">${escapeHtml(msg.raw_content)}</code></pre>
+                                </div>
+                                <div class="code-toggle-btn" id="code-btn-${msg.id}" onclick="toggleCode(${msg.id})">Развернуть код</div>
+                            </div>`;
+                    }
+
+                    const editedLabel = msg.is_edited ? ' (изм.)' : '';
+                    const msgDataJson = JSON.stringify({id: msg.id, username: msg.username, displayname: msg.displayname, text: msg.text, type: msg.type, url: msg.url || '', isMy: isMy});
+                    let userAvatar = msg.avatar ? `<img src="${msg.avatar}" class="msg-avatar">` : `<div class="msg-avatar" style="background:#24a1de; display:flex; align-items:center; justify-content:center; color:#fff; font-size:10px; font-weight:bold;">${msg.displayname[0].toUpperCase()}</div>`;
+                    
+                    html += `
+                        <div class="msg ${isMy}" id="msg-id-${msg.id}"
+                             data-msg-data='${msgDataJson.replace(/'/g, "&apos;")}'
+                             oncontextmenu="handleContextMenu(event, this)"
+                             ontouchstart="handleTouchStart(event, this)"
+                             ontouchend="handleTouchEnd()">
+                            ${isMy === 'other' ? userAvatar : ''}
+                            <div class="msg-user">${escapeHtml(msg.displayname)} <span style="font-size:10px; opacity:0.5; font-weight:normal;">@${escapeHtml(msg.username)}</span></div>
+                            ${content}
+                            <div class="msg-meta">${msg.time}${editedLabel}</div>
+                        </div>`;
+                });
+                
+                chatBox.innerHTML = html;
+                lucide.createIcons();
+                Prism.highlightAll();
+
+                if (isInitialLoad || isScrolledToBottom) {
+                    chatBox.scrollTop = chatBox.scrollHeight;
+                    isInitialLoad = false;
+                }
+            }).catch(() => {});
+    }
+
+    function sendTypingSignal() {
+        const now = Date.now();
+        if (now - lastTypingTime > 3000) {
+            lastTypingTime = now;
+            fetch("/typing_status", { method: 'POST' }).catch(() => {});
+        }
+    }
+
+    function checkTypingStatus() {
+        if (currentView !== 'group' && currentView !== 'dm') return;
+        fetch(`/get_typing?type=${currentView}&target=${currentTarget}`)
+            .then(res => res.json())
+            .then(data => {
+                const box = document.getElementById('typing-indicator');
+                const label = document.getElementById('typing-status-text');
+                if (data.users.length > 0) {
+                    label.innerHTML = `<b>${escapeHtml(data.users.join(', '))}</b> печатает...`;
+                    box.style.display = 'flex';
+                } else {
+                    box.style.display = 'none';
+                }
+            });
+    }
+
+    function submitForm() {
+        const input = document.getElementById('message-text');
+        const text = input.value.trim();
+        if (!text && currentAction !== 'edit') return;
+
+        const formData = new FormData();
+        formData.append('chat_type', currentView);
+        formData.append('target_id', currentTarget);
+
+        if (currentAction === 'edit') {
+            formData.append('text', text);
+            fetch(`/edit/${selectedMsgId}`, { method: 'POST', body: formData }).then(() => { cancelAction(); renderMainView(); });
+        } else {
+            formData.append('text', text);
+            if (currentAction === 'reply') {
+                // Упакуем цитируемое сообщение в JSON для передачи на сервер
+                let replyPayload = { id: selectedMsgId, displayname: selectedMsgUser, text: selectedMsgText };
+                formData.append('reply_to_json', JSON.stringify(replyPayload));
+            }
+            fetch("/send_message", { method: 'POST', body: formData }).then(() => { cancelAction(); renderMainView(); });
+        }
+    }
+
+    function uploadFile() {
+        const fileInput = document.getElementById('file-input');
+        if (fileInput.files.length === 0) return;
+        const formData = new FormData();
+        formData.append('file', fileInput.files[0]);
+        formData.append('chat_type', currentView);
+        formData.append('target_id', currentTarget);
+        fetch("/send_message", { method: 'POST', body: formData }).then(() => { fileInput.value = ''; renderMainView(); });
+    }
+
+    // Проверка прав администратора при загрузке страницы
+    fetch("/get_profile").then(res => res.json()).then(p => {
+        if(p.is_admin) document.getElementById('tab-admin').style.display = 'block';
+    });
+
+    function toggleCode(id) {
+        const body = document.getElementById(`code-body-${id}`);
+        body.classList.toggle('expanded');
+    }
+    function copyRawCode(id) {
+        navigator.clipboard.writeText(codeFilesCache[id]);
+        alert('Код скопирован!');
+    }
+    function openCodeViewer(id, ext) {
+        const viewer = document.getElementById('media-viewer');
+        document.getElementById('viewer-container').innerHTML = `<div class="code-viewer-container"><div class="code-viewer-body"><pre><code class="language-${ext}">${escapeHtml(codeFilesCache[id])}</code></pre></div></div>`;
+        viewer.style.display = 'flex';
+        Prism.highlightAll();
+    }
+    function handleContextMenu(e, element) {
+        e.preventDefault();
+        const data = JSON.parse(element.getAttribute('data-msg-data'));
+        showMenu(e.clientX, e.clientY, data.id, data.displayname, data.text, data.type, data.url, data.isMy);
+    }
+    function handleTouchStart(e, element) {
+        touchTimeout = setTimeout(() => {
+            const touch = e.touches[0];
+            const data = JSON.parse(element.getAttribute('data-msg-data'));
+            showMenu(touch.clientX, touch.clientY, data.id, data.displayname, data.text, data.type, data.url, data.isMy);
+        }, 500); 
+    }
+    function handleTouchEnd() { clearTimeout(touchTimeout); }
+
+    function showMenu(x, y, id, user, text, type, url, isMy) {
+        selectedMsgId = id; selectedMsgUser = user; selectedMsgText = text; selectedMsgType = type; selectedMsgUrl = url;
+        const menu = document.getElementById('msg-menu');
+        menu.style.left = `${Math.min(x, window.innerWidth - 210)}px`;
+        menu.style.top = `${Math.min(y, window.innerHeight - 280)}px`;
+        menu.style.display = 'block';
+        setTimeout(() => menu.classList.add('show'), 10);
+        document.querySelectorAll('.id-my-only').forEach(i => i.style.display = (isMy === 'my') ? 'block' : 'none');
+    }
+    function closeMenu() { document.getElementById('msg-menu').classList.remove('show'); }
+    function triggerCopyText() { closeMenu(); navigator.clipboard.writeText(selectedMsgText); }
+    function triggerDownloadImage() { closeMenu(); const a = document.createElement('a'); a.href = selectedMsgUrl; a.download = 'img.png'; a.click(); }
+    function openViewer(url, type) { if(type==='image') document.getElementById('viewer-container').innerHTML = `<img src="${url}" class="media-viewer-content">`; document.getElementById('media-viewer').style.display='flex'; }
+    function closeViewer() { document.getElementById('media-viewer').style.display='none'; }
+    function triggerReply() { closeMenu(); currentAction = 'reply'; document.getElementById('action-bar').style.display = 'flex'; document.getElementById('action-bar-text').innerText = `Ответ для ${selectedMsgUser}`; document.getElementById('message-text').focus(); }
+    function triggerEdit() { closeMenu(); currentAction = 'edit'; document.getElementById('action-bar').style.display = 'flex'; document.getElementById('action-bar-text').innerText = `Изменение сообщения`; document.getElementById('message-text').value = selectedMsgText; document.getElementById('message-text').focus(); }
+    function triggerDelete() { closeMenu(); if(confirm("Удалить?")) fetch(`/delete/${selectedMsgId}`, {method:'POST'}).then(() => renderMainView()); }
+    function cancelAction() { currentAction = null; document.getElementById('action-bar').style.display = 'none'; document.getElementById('message-text').value = ''; }
+
+    setInterval(renderMainView, 2000);
+    setInterval(checkTypingStatus, 1500);
+    switchView('group', 'general');
+</script>
+</body>
+</html>
