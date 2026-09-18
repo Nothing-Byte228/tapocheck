@@ -175,6 +175,7 @@
     {% endif %}
 
     <form method="POST" action="{{ url_for('login' if action == 'login' else 'register') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
         <div class="input-group">
             <input type="text" name="username" class="auth-input" placeholder="Имя пользователя (латиница)" required autocomplete="off" autofocus>
             <i data-lucide="user"></i>

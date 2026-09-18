@@ -3,9 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>TapoCheck Glass</title>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
@@ -252,11 +254,19 @@
     let touchTimeout;
     let codeFilesCache = {};
     let lastTypingTime = 0;
+    
+    // Initialize Socket.IO
+    const socket = io();
 
     function autoResizeTextArea(element) {
         element.style.height = "40px"; 
         const newHeight = element.scrollHeight;
         if (newHeight > 40) element.style.height = Math.min(newHeight, 140) + "px"; 
+    }
+    
+    function get_dm_id(user1, user2) {
+        const sorted = [user1, user2].sort();
+        return `${sorted[0]}_dm_${sorted[1]}`;
     }
 
     function escapeHtml(text) {
@@ -265,6 +275,12 @@
     }
 
     function switchView(view, target = '') {
+        // Leave current room if in chat
+        if (currentView === 'group' || currentView === 'dm') {
+            const oldRoom = currentView === 'dm' ? get_dm_id(currentUsername, currentTarget) : `${currentView}_${currentTarget}`;
+            socket.emit('leave_room', { room: oldRoom });
+        }
+        
         currentView = view;
         currentTarget = target;
         isInitialLoad = true;
@@ -276,9 +292,13 @@
         if (view === 'group') {
             document.getElementById('tab-group').classList.add('active');
             document.getElementById('chat-title-text').innerText = `Комната: #${target}`;
+            socket.emit('join_room', { room: `group_${target}` });
         } else if (view === 'dm_list' || view === 'dm') {
             document.getElementById('tab-dm').classList.add('active');
             document.getElementById('chat-title-text').innerText = view === 'dm' ? `ЛС: @${target}` : "Личные сообщения";
+            if (view === 'dm') {
+                socket.emit('join_room', { room: get_dm_id(currentUsername, target) });
+            }
         } else if (view === 'profile') {
             document.getElementById('tab-profile').classList.add('active');
             document.getElementById('chat-title-text').innerText = "Мой профиль";
@@ -327,6 +347,7 @@
                     <div class="glass-panel-content" onclick="event.stopPropagation()">
                         <h3>Редактирование профиля TapoCheck</h3><br>
                         <form id="profile-form" onsubmit="saveProfile(event)" enctype="multipart/form-data">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                             <label>Никнейм (Смена невозможна):</label>
                             <input type="text" class="p-input" value="${escapeHtml(p.username)}" disabled>
                             <label>Отображаемое имя:</label>
@@ -362,12 +383,18 @@
 
     function saveProfile(e) {
         e.preventDefault();
-        fetch("/update_profile", { method: 'POST', body: new FormData(document.getElementById('profile-form')) })
+        const formData = new FormData(document.getElementById('profile-form'));
+        const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+        formData.append('csrf_token', csrfToken);
+        fetch("/update_profile", { method: 'POST', body: formData })
             .then(() => alert('Профиль сохранен!'));
     }
 
     function toggleBan(id) {
-        fetch(`/admin/toggle_ban/${id}`, { method: 'POST' }).then(() => renderMainView());
+        const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+        const formData = new FormData();
+        formData.append('csrf_token', csrfToken);
+        fetch(`/admin/toggle_ban/${id}`, { method: 'POST', body: formData }).then(() => renderMainView());
     }
 
     function loadMessagesFromServer(prefixHtml) {
@@ -377,7 +404,6 @@
             .then(res => res.json())
             .then(messages => {
                 const chatBox = document.getElementById('chat-box');
-                const isScrolledToBottom = chatBox.scrollHeight - chatBox.clientHeight <= chatBox.scrollTop + 120;
                 
                 let html = prefixHtml;
                 messages.forEach(msg => {
@@ -396,7 +422,6 @@
                     if (msg.type === 'text') {
                         content += `<div class="msg-text">${marked.parse(secureText)}</div>`;
                     } else if (msg.type === 'image') {
-                        // Багфикс отображения картинок: явный сброс параметров и обработка ошибок на путях
                         content += `<img src="${msg.url}" class="chat-img" onerror="this.src='/static/error-img.png'" onclick="openViewer('${msg.url}', 'image')">`;
                     } else if (msg.type === 'video') {
                         content += `
@@ -446,11 +471,8 @@
                 chatBox.innerHTML = html;
                 lucide.createIcons();
                 Prism.highlightAll();
-
-                if (isInitialLoad || isScrolledToBottom) {
-                    chatBox.scrollTop = chatBox.scrollHeight;
-                    isInitialLoad = false;
-                }
+                chatBox.scrollTop = chatBox.scrollHeight;
+                isInitialLoad = false;
             }).catch(() => {});
     }
 
@@ -458,24 +480,117 @@
         const now = Date.now();
         if (now - lastTypingTime > 3000) {
             lastTypingTime = now;
-            fetch("/typing_status", { method: 'POST' }).catch(() => {});
+            socket.emit('typing', {
+                chat_type: currentView,
+                target_id: currentTarget
+            });
         }
     }
 
-    function checkTypingStatus() {
-        if (currentView !== 'group' && currentView !== 'dm') return;
-        fetch(`/get_typing?type=${currentView}&target=${currentTarget}`)
-            .then(res => res.json())
-            .then(data => {
-                const box = document.getElementById('typing-indicator');
-                const label = document.getElementById('typing-status-text');
-                if (data.users.length > 0) {
-                    label.innerHTML = `<b>${escapeHtml(data.users.join(', '))}</b> печатает...`;
-                    box.style.display = 'flex';
-                } else {
-                    box.style.display = 'none';
-                }
-            });
+    // WebSocket event listeners
+    socket.on('connect', () => {
+        console.log('WebSocket connected');
+        // Join initial room
+        if (currentView === 'group' || currentView === 'dm') {
+            const room = currentView === 'dm' ? get_dm_id(currentUsername, currentTarget) : `${currentView}_${currentTarget}`;
+            socket.emit('join_room', { room: room });
+        }
+    });
+
+    socket.on('new_message', (data) => {
+        if (currentView === 'group' || currentView === 'dm') {
+            appendMessage(data);
+        }
+    });
+
+    socket.on('user_typing', (data) => {
+        if (currentView === 'group' || currentView === 'dm') {
+            const box = document.getElementById('typing-indicator');
+            const label = document.getElementById('typing-status-text');
+            label.innerHTML = `<b>${escapeHtml(data.username)}</b> печатает...`;
+            box.style.display = 'flex';
+            setTimeout(() => { box.style.display = 'none'; }, 3000);
+        }
+    });
+
+    socket.on('user_joined', (data) => {
+        console.log(`${data.username} joined the room`);
+    });
+
+    socket.on('user_left', (data) => {
+        console.log(`${data.username} left the room`);
+    });
+
+    socket.on('error', (data) => {
+        alert(`Ошибка: ${data.message}`);
+    });
+
+    function appendMessage(msg) {
+        const chatBox = document.getElementById('chat-box');
+        const isMy = msg.username === currentUsername ? 'my' : 'other';
+        let content = '';
+        let secureText = escapeHtml(msg.text);
+
+        if (msg.reply_to) {
+            content += `
+                <div class="msg-reply-quote" onclick="scrollToMessage(${msg.reply_to.id})">
+                    <div class="reply-user">${escapeHtml(msg.reply_to.displayname)}</div>
+                    <div class="reply-text">${escapeHtml(msg.reply_to.text)}</div>
+                </div>`;
+        }
+
+        if (msg.type === 'text') {
+            content += `<div class="msg-text">${marked.parse(secureText)}</div>`;
+        } else if (msg.type === 'image') {
+            content += `<img src="${msg.url}" class="chat-img" onerror="this.src='/static/error-img.png'" onclick="openViewer('${msg.url}', 'image')">`;
+        } else if (msg.type === 'video') {
+            content += `
+                <div class="video-wrapper" onclick="openViewer('${msg.url}', 'video')">
+                    <video src="${msg.url}" class="chat-video-preview" muted></video>
+                    <div class="video-play-badge"><i data-lucide="play"></i></div>
+                </div>`;
+        } else if (msg.type === 'file') {
+            content += `<a href="${msg.url}" download class="chat-file" onclick="event.stopPropagation()"><i data-lucide="file"></i> ${secureText}</a>`;
+        } else if (msg.type === 'code') {
+            codeFilesCache[msg.id] = msg.raw_content;
+            const fileExt = msg.text.split('.').pop();
+            content += `
+                <div class="code-block-container" onclick="event.stopPropagation()">
+                    <div class="code-block-header">
+                        <span>📁 ${secureText}</span>
+                        <div class="code-block-actions">
+                            <div class="code-icon-btn" title="Копировать код" onclick="copyRawCode(${msg.id})"><i data-lucide="copy"></i></div>
+                            <div class="code-icon-btn" onclick="openCodeViewer(${msg.id}, '${fileExt}')"><i data-lucide="maximize-2"></i></div>
+                            <a href="${msg.url}" download class="code-icon-btn"><i data-lucide="download"></i></a>
+                        </div>
+                    </div>
+                    <div class="code-block-body" id="code-body-${msg.id}">
+                        <pre><code class="language-${fileExt}">${escapeHtml(msg.raw_content)}</code></pre>
+                    </div>
+                    <div class="code-toggle-btn" id="code-btn-${msg.id}" onclick="toggleCode(${msg.id})">Развернуть код</div>
+                </div>`;
+        }
+
+        const editedLabel = msg.is_edited ? ' (изм.)' : '';
+        const msgDataJson = JSON.stringify({id: msg.id, username: msg.username, displayname: msg.displayname, text: msg.text, type: msg.type, url: msg.url || '', isMy: isMy});
+        let userAvatar = msg.avatar ? `<img src="${msg.avatar}" class="msg-avatar">` : `<div class="msg-avatar" style="background:#24a1de; display:flex; align-items:center; justify-content:center; color:#fff; font-size:10px; font-weight:bold;">${msg.displayname[0].toUpperCase()}</div>`;
+        
+        const msgHtml = `
+            <div class="msg ${isMy}" id="msg-id-${msg.id}"
+                 data-msg-data='${msgDataJson.replace(/'/g, "&apos;")}'
+                 oncontextmenu="handleContextMenu(event, this)"
+                 ontouchstart="handleTouchStart(event, this)"
+                 ontouchend="handleTouchEnd()">
+                ${isMy === 'other' ? userAvatar : ''}
+                <div class="msg-user">${escapeHtml(msg.displayname)} <span style="font-size:10px; opacity:0.5; font-weight:normal;">@${escapeHtml(msg.username)}</span></div>
+                ${content}
+                <div class="msg-meta">${msg.time}${editedLabel}</div>
+            </div>`;
+        
+        chatBox.insertAdjacentHTML('beforeend', msgHtml);
+        lucide.createIcons();
+        Prism.highlightAll();
+        chatBox.scrollTop = chatBox.scrollHeight;
     }
 
     function submitForm() {
@@ -483,21 +598,30 @@
         const text = input.value.trim();
         if (!text && currentAction !== 'edit') return;
 
-        const formData = new FormData();
-        formData.append('chat_type', currentView);
-        formData.append('target_id', currentTarget);
-
         if (currentAction === 'edit') {
+            // Edit still uses HTTP request (keep CSRF protection)
+            const formData = new FormData();
+            const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+            formData.append('csrf_token', csrfToken);
             formData.append('text', text);
             fetch(`/edit/${selectedMsgId}`, { method: 'POST', body: formData }).then(() => { cancelAction(); renderMainView(); });
         } else {
-            formData.append('text', text);
+            // Send via WebSocket
+            let replyPayload = null;
             if (currentAction === 'reply') {
-                // Упакуем цитируемое сообщение в JSON для передачи на сервер
-                let replyPayload = { id: selectedMsgId, displayname: selectedMsgUser, text: selectedMsgText };
-                formData.append('reply_to_json', JSON.stringify(replyPayload));
+                replyPayload = { id: selectedMsgId, displayname: selectedMsgUser, text: selectedMsgText };
             }
-            fetch("/send_message", { method: 'POST', body: formData }).then(() => { cancelAction(); renderMainView(); });
+            
+            socket.emit('send_message', {
+                text: text,
+                chat_type: currentView,
+                target_id: currentTarget,
+                reply_to_json: replyPayload ? JSON.stringify(replyPayload) : ''
+            });
+            
+            cancelAction();
+            input.value = '';
+            autoResizeTextArea(input);
         }
     }
 
@@ -505,6 +629,8 @@
         const fileInput = document.getElementById('file-input');
         if (fileInput.files.length === 0) return;
         const formData = new FormData();
+        const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+        formData.append('csrf_token', csrfToken);
         formData.append('file', fileInput.files[0]);
         formData.append('chat_type', currentView);
         formData.append('target_id', currentTarget);
@@ -560,11 +686,18 @@
     function closeViewer() { document.getElementById('media-viewer').style.display='none'; }
     function triggerReply() { closeMenu(); currentAction = 'reply'; document.getElementById('action-bar').style.display = 'flex'; document.getElementById('action-bar-text').innerText = `Ответ для ${selectedMsgUser}`; document.getElementById('message-text').focus(); }
     function triggerEdit() { closeMenu(); currentAction = 'edit'; document.getElementById('action-bar').style.display = 'flex'; document.getElementById('action-bar-text').innerText = `Изменение сообщения`; document.getElementById('message-text').value = selectedMsgText; document.getElementById('message-text').focus(); }
-    function triggerDelete() { closeMenu(); if(confirm("Удалить?")) fetch(`/delete/${selectedMsgId}`, {method:'POST'}).then(() => renderMainView()); }
+    function triggerDelete() { 
+        closeMenu(); 
+        if(confirm("Удалить?")) {
+            const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+            const formData = new FormData();
+            formData.append('csrf_token', csrfToken);
+            fetch(`/delete/${selectedMsgId}`, {method:'POST', body: formData}).then(() => renderMainView()); 
+        }
+    }
     function cancelAction() { currentAction = null; document.getElementById('action-bar').style.display = 'none'; document.getElementById('message-text').value = ''; }
 
-    setInterval(renderMainView, 2000);
-    setInterval(checkTypingStatus, 1500);
+    // Remove polling intervals - using WebSockets now
     switchView('group', 'general');
 </script>
 </body>
