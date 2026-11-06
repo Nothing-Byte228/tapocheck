@@ -34,7 +34,7 @@ class Config:
     DEBUG = os.environ.get('FLASK_DEBUG', 'False').lower() == 'true'
 
 class DevelopmentConfig(Config):
-    DEBUG = True
+    DEBUG = False
 
 class ProductionConfig(Config):
     DEBUG = False
