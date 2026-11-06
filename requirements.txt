@@ -6,3 +6,5 @@ Flask-SocketIO==5.3.6
 python-socketio==5.11.0
 bleach==6.1.0
 python-dotenv==1.0.0
+gunicorn
+eventlet
